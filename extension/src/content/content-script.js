@@ -6,33 +6,50 @@ import { handleGetPageText } from './tools/get-page-text.js';
 import { handleJavascript } from './tools/javascript.js';
 import { handleReadConsole } from './tools/console.js';
 import { handleReadNetwork } from './tools/network.js';
+import { handleExtractLinks } from './tools/extract-links.js';
+import { handleGetSelectedText } from './tools/get-selected-text.js';
+import { handlePageSnapshot } from './tools/page_snapshot.js';
+import { showAgentIndicator, hideAgentIndicator } from './tools/agent-visual-indicator.js';
+import { startTeachRecording, stopTeachRecording, teachStatus } from './tools/teach-recorder.js';
 
-// Ref registry
-const refMap = new Map();
+// Ref registry (persistent across calls)
+const refToElement = new Map();
+const elementToRef = new WeakMap();
 let refCounter = 0;
 
 function assignRef(element) {
+  if (!element) return null;
+
+  const existing = elementToRef.get(element);
+  if (existing) return existing;
+
   refCounter++;
   const refId = `ref_${refCounter}`;
-  refMap.set(refId, new WeakRef(element));
-  try { element.dataset.copilotRef = refId; } catch { /* SVG etc */ }
+  refToElement.set(refId, new WeakRef(element));
+  elementToRef.set(element, refId);
   return refId;
 }
 
 function resolveRef(refId) {
-  const weakRef = refMap.get(refId);
+  const weakRef = refToElement.get(refId);
   if (!weakRef) return null;
+
   const el = weakRef.deref();
   if (!el || !document.contains(el)) {
-    refMap.delete(refId);
+    refToElement.delete(refId);
     return null;
   }
+
   return el;
 }
 
-function clearRefs() {
-  refMap.clear();
-  refCounter = 0;
+function pruneRefs() {
+  for (const [refId, weakRef] of refToElement.entries()) {
+    const el = weakRef.deref();
+    if (!el || !document.contains(el)) {
+      refToElement.delete(refId);
+    }
+  }
 }
 
 // Console capture
@@ -48,13 +65,15 @@ function captureConsole(level, origFn) {
   return function (...args) {
     consoleLogs.push({
       level,
-      message: args.map(a => {
-        try { return typeof a === 'object' ? JSON.stringify(a) : String(a); }
-        catch { return String(a); }
+      message: args.map((a) => {
+        try {
+          return typeof a === 'object' ? JSON.stringify(a) : String(a);
+        } catch {
+          return String(a);
+        }
       }).join(' '),
       timestamp: Date.now(),
     });
-    // Keep buffer bounded
     if (consoleLogs.length > 1000) consoleLogs.splice(0, consoleLogs.length - 500);
     origFn(...args);
   };
@@ -83,14 +102,42 @@ try {
     }
   });
   observer.observe({ type: 'resource', buffered: true });
-} catch { /* PerformanceObserver not available */ }
+} catch {
+  // PerformanceObserver not available
+}
 
-// Message listener
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg.type === 'SHOW_AGENT_INDICATOR') {
+    showAgentIndicator();
+    sendResponse({ ok: true });
+    return false;
+  }
+
+  if (msg.type === 'HIDE_AGENT_INDICATOR') {
+    hideAgentIndicator();
+    sendResponse({ ok: true });
+    return false;
+  }
+
+  if (msg.type === 'TEACH_START') {
+    sendResponse(startTeachRecording());
+    return false;
+  }
+
+  if (msg.type === 'TEACH_STOP') {
+    sendResponse(stopTeachRecording());
+    return false;
+  }
+
+  if (msg.type === 'TEACH_STATUS') {
+    sendResponse(teachStatus());
+    return false;
+  }
+
   if (msg.type !== 'TOOL_EXEC') return false;
 
   const handlers = {
-    read_page: () => handleReadPage(msg.input, { assignRef, clearRefs }),
+    read_page: () => handleReadPage(msg.input, { assignRef, resolveRef, pruneRefs }),
     find: () => handleFind(msg.input, { assignRef }),
     form_input: () => handleFormInput(msg.input, { resolveRef }),
     computer: () => handleComputer(msg.input, { resolveRef }),
@@ -98,6 +145,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     javascript_tool: () => handleJavascript(msg.input),
     read_console_messages: () => handleReadConsole(msg.input, consoleLogs),
     read_network_requests: () => handleReadNetwork(msg.input, networkRequests),
+    extract_links: () => handleExtractLinks(msg.input),
+    get_selected_text: () => handleGetSelectedText(msg.input),
+    page_snapshot: () => handlePageSnapshot(msg.input),
   };
 
   const handler = handlers[msg.tool];
@@ -107,8 +157,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 
   Promise.resolve(handler())
-    .then(result => sendResponse(result))
-    .catch(err => sendResponse({ error: err.message }));
+    .then((result) => sendResponse(result))
+    .catch((err) => sendResponse({ error: err.message }));
 
   return true;
 });

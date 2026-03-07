@@ -1,4 +1,4 @@
-service: browser-copilot-2-claude-backend
+service: browser-copilot-2-backend
 frameworkVersion: "4"
 
 provider:
@@ -7,7 +7,9 @@ provider:
   region: us-east-1
   environment:
     LLM_BASE_URL: ${env:LLM_BASE_URL}
-    LLM_API_KEY: ${env:LLM_API_KEY}
+    HF_API_KEY: ${env:HF_API_KEY, ''}
+    HUGGING_FACE_TOKEN: ${env:HUGGING_FACE_TOKEN, ''}
+    LLM_API_KEY: ${env:LLM_API_KEY, ''}
     LLM_MODEL: ${env:LLM_MODEL, 'grok-3'}
 
 functions:

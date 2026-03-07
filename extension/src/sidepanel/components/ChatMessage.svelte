@@ -1,52 +1,82 @@
 <script>
   let { message } = $props();
+
+  function formatTime(ts) {
+    if (!ts) return '';
+    try {
+      return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } catch {
+      return '';
+    }
+  }
 </script>
 
 {#if message.role === 'plan'}
   <!-- Plan messages are handled by PlanApproval -->
+{:else if message.role === 'user'}
+  <article class="message-row user-row">
+    <div class="user-bubble">
+      {message.content}
+    </div>
+  </article>
 {:else}
-  <div class="message {message.role}" class:streaming={message.isStreaming}>
-    <div class="role-label">{message.role === 'user' ? 'You' : 'Assistant'}</div>
-    <div class="content">{message.content}</div>
-    {#if message.isStreaming}
-      <span class="cursor">|</span>
-    {/if}
-  </div>
+  <article class="message-row">
+    <div class="assistant-msg" class:streaming={message.isStreaming}>
+      <div class="content">{message.content}</div>
+      {#if message.isStreaming}
+        <span class="cursor">|</span>
+      {/if}
+    </div>
+  </article>
 {/if}
 
 <style>
-  .message {
+  .message-row {
+    display: flex;
+  }
+
+  .user-row {
+    justify-content: flex-end;
+  }
+
+  /* ─── User bubble ─── */
+  .user-bubble {
+    max-width: 88%;
+    background: #44403c;
+    border-radius: 16px 16px 4px 16px;
     padding: 10px 14px;
-    margin: 6px 0;
-    border-radius: 10px;
     font-size: 14px;
     line-height: 1.5;
+    color: #fafaf9;
     white-space: pre-wrap;
     word-break: break-word;
   }
-  .user {
-    background: #e3f2fd;
-    margin-left: 24px;
+
+  /* ─── Assistant message (no bubble) ─── */
+  .assistant-msg {
+    max-width: 100%;
+    font-size: 14px;
+    line-height: 1.6;
+    color: #d6d3d1;
+    white-space: pre-wrap;
+    word-break: break-word;
+    padding: 2px 4px;
   }
-  .assistant {
-    background: #fff;
-    border: 1px solid #e5e7eb;
-    margin-right: 24px;
+
+  .content {
+    color: inherit;
   }
-  .role-label {
-    font-size: 11px;
-    font-weight: 600;
-    color: #6b7280;
-    margin-bottom: 4px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
+
   .cursor {
     animation: blink 1s step-end infinite;
-    color: #3b82f6;
-    font-weight: bold;
+    color: #d4845a;
+    font-weight: 700;
+    margin-left: 2px;
   }
+
   @keyframes blink {
-    50% { opacity: 0; }
+    50% {
+      opacity: 0;
+    }
   }
 </style>

@@ -1,5 +1,5 @@
 {
-  "name": "browser-copilot-2-claude-backend",
+  "name": "browser-copilot-2-backend",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "dotenv": "^17.3.1",
-    "openai": "^4.77.0"
+    "openai": "^6.27.0"
   },
   "devDependencies": {
     "serverless": "^4.4.0"

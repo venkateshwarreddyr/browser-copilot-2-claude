@@ -1,141 +1,243 @@
-export function handleReadPage(input, { assignRef, clearRefs }) {
-  const { filter = 'all', depth = 15, ref_id, max_chars = 50000 } = input;
+function getRole(el) {
+  const explicitRole = el.getAttribute('role');
+  if (explicitRole) return explicitRole;
 
-  clearRefs();
+  const tag = el.tagName.toLowerCase();
+  const type = (el.getAttribute('type') || '').toLowerCase();
 
-  const rootElement = ref_id
-    ? document.querySelector(`[data-copilot-ref="${ref_id}"]`)
-    : document.body;
-
-  if (!rootElement) return `Element not found for ref_id: ${ref_id}`;
-
-  const tree = buildTree(rootElement, { filter, maxDepth: depth, currentDepth: 0, assignRef });
-  const output = serializeNode(tree, 0);
-
-  if (output.length > max_chars) {
-    return `Output exceeds ${max_chars} chars (got ${output.length}). Use smaller depth or specify ref_id to focus on a section.`;
-  }
-
-  return output;
-}
-
-function buildTree(element, opts) {
-  if (opts.currentDepth > opts.maxDepth) return null;
-  if (!element || element.nodeType !== 1) return null;
-
-  const style = window.getComputedStyle(element);
-  const hidden = style.display === 'none' || style.visibility === 'hidden';
-  const role = getAriaRole(element);
-  const interactive = isInteractive(element);
-
-  if (opts.filter === 'interactive' && !interactive && element !== document.body) {
-    const children = [];
-    for (const child of element.children) {
-      const sub = buildTree(child, { ...opts, currentDepth: opts.currentDepth + 1 });
-      if (sub) {
-        if (Array.isArray(sub)) children.push(...sub);
-        else children.push(sub);
-      }
-    }
-    return children.length > 0 ? children : null;
-  }
-
-  if (hidden && element !== document.body) return null;
-
-  const refId = opts.assignRef(element);
-  const node = {
-    ref: refId,
-    tag: element.tagName.toLowerCase(),
-    role,
+  const roleMap = {
+    a: 'link',
+    button: 'button',
+    input: type === 'submit' || type === 'button' ? 'button'
+      : type === 'checkbox' ? 'checkbox'
+      : type === 'radio' ? 'radio'
+      : type === 'file' ? 'button'
+      : 'textbox',
+    select: 'combobox',
+    textarea: 'textbox',
+    h1: 'heading',
+    h2: 'heading',
+    h3: 'heading',
+    h4: 'heading',
+    h5: 'heading',
+    h6: 'heading',
+    img: 'image',
+    nav: 'navigation',
+    main: 'main',
+    header: 'banner',
+    footer: 'contentinfo',
+    section: 'region',
+    article: 'article',
+    aside: 'complementary',
+    form: 'form',
+    table: 'table',
+    ul: 'list',
+    ol: 'list',
+    li: 'listitem',
+    label: 'label',
   };
 
-  const name = getAccessibleName(element);
-  if (name) node.name = name;
-
-  if (interactive) node.interactive = true;
-  if (element.tagName === 'INPUT') { node.type = element.type; if (element.value) node.value = element.value; }
-  if (element.tagName === 'TEXTAREA' && element.value) node.value = element.value;
-  if (element.tagName === 'SELECT' && element.value) node.value = element.value;
-  if (element.tagName === 'A' && element.href) node.href = element.href;
-  if (element.tagName === 'IMG' && element.alt) node.alt = element.alt;
-
-  const directText = getDirectText(element).trim();
-  const children = [];
-  for (const child of element.children) {
-    const sub = buildTree(child, { ...opts, currentDepth: opts.currentDepth + 1 });
-    if (sub) {
-      if (Array.isArray(sub)) children.push(...sub);
-      else children.push(sub);
-    }
-  }
-
-  if (children.length > 0) {
-    node.children = children;
-  } else if (directText) {
-    node.text = directText.slice(0, 200);
-  }
-
-  return node;
-}
-
-function getAriaRole(el) {
-  if (el.getAttribute('role')) return el.getAttribute('role');
-  const map = {
-    A: 'link', BUTTON: 'button', INPUT: 'textbox', SELECT: 'combobox',
-    TEXTAREA: 'textbox', NAV: 'navigation', MAIN: 'main', HEADER: 'banner',
-    FOOTER: 'contentinfo', ASIDE: 'complementary', FORM: 'form',
-    H1: 'heading', H2: 'heading', H3: 'heading', H4: 'heading', H5: 'heading', H6: 'heading',
-    UL: 'list', OL: 'list', LI: 'listitem', TABLE: 'table', IMG: 'img',
-  };
-  return map[el.tagName] || 'generic';
-}
-
-function isInteractive(el) {
-  const tags = ['A', 'BUTTON', 'INPUT', 'SELECT', 'TEXTAREA'];
-  if (tags.includes(el.tagName)) return true;
-  const role = el.getAttribute('role');
-  if (role === 'button' || role === 'link' || role === 'tab' || role === 'menuitem') return true;
-  if (el.tabIndex >= 0) return true;
-  return false;
+  return roleMap[tag] || 'generic';
 }
 
 function getAccessibleName(el) {
-  return el.getAttribute('aria-label')
-    || el.getAttribute('title')
-    || el.getAttribute('alt')
-    || el.getAttribute('placeholder')
-    || '';
-}
+  const tag = el.tagName.toLowerCase();
 
-function getDirectText(el) {
-  let text = '';
-  for (const node of el.childNodes) {
-    if (node.nodeType === 3) text += node.textContent;
+  if (tag === 'select') {
+    const selected = el.querySelector('option[selected]') || el.options?.[el.selectedIndex];
+    if (selected?.textContent?.trim()) return selected.textContent.trim();
   }
-  return text;
+
+  const ariaLabel = el.getAttribute('aria-label');
+  if (ariaLabel?.trim()) return ariaLabel.trim();
+
+  const placeholder = el.getAttribute('placeholder');
+  if (placeholder?.trim()) return placeholder.trim();
+
+  const title = el.getAttribute('title');
+  if (title?.trim()) return title.trim();
+
+  const alt = el.getAttribute('alt');
+  if (alt?.trim()) return alt.trim();
+
+  if (el.id) {
+    const label = document.querySelector(`label[for="${CSS.escape(el.id)}"]`);
+    if (label?.textContent?.trim()) return label.textContent.trim();
+  }
+
+  if (tag === 'input') {
+    const inputType = (el.getAttribute('type') || '').toLowerCase();
+    const value = el.getAttribute('value') || '';
+    if (inputType === 'submit' && value.trim()) return value.trim();
+    if (el.value && el.value.length < 50 && el.value.trim()) return el.value.trim();
+  }
+
+  if (['button', 'a', 'summary'].includes(tag)) {
+    let text = '';
+    for (const node of el.childNodes) {
+      if (node.nodeType === Node.TEXT_NODE) text += node.textContent || '';
+    }
+    if (text.trim()) return text.trim();
+  }
+
+  if (/^h[1-6]$/.test(tag)) {
+    const text = el.textContent || '';
+    if (text.trim()) return text.trim().slice(0, 100);
+  }
+
+  if (tag === 'img') return '';
+
+  let directText = '';
+  for (const node of el.childNodes) {
+    if (node.nodeType === Node.TEXT_NODE) directText += node.textContent || '';
+  }
+
+  const trimmed = directText.trim();
+  if (trimmed.length >= 3) {
+    return trimmed.length > 100 ? `${trimmed.slice(0, 100)}...` : trimmed;
+  }
+
+  return '';
 }
 
-function serializeNode(node, indent) {
-  if (!node) return '';
-  if (Array.isArray(node)) return node.map(n => serializeNode(n, indent)).join('');
+function isVisible(el) {
+  const style = window.getComputedStyle(el);
+  return style.display !== 'none'
+    && style.visibility !== 'hidden'
+    && style.opacity !== '0'
+    && el.offsetWidth > 0
+    && el.offsetHeight > 0;
+}
 
-  const pad = '  '.repeat(indent);
-  let line = `${pad}[${node.ref}] ${node.tag}`;
-  if (node.role !== 'generic') line += ` (${node.role})`;
-  if (node.name) line += ` '${node.name}'`;
-  if (node.text) line += ` "${node.text}"`;
-  if (node.type) line += ` type=${node.type}`;
-  if (node.value) line += ` value="${node.value}"`;
-  if (node.href) line += ` href=${node.href}`;
-  if (node.alt) line += ` alt="${node.alt}"`;
-  if (node.interactive) line += ' [interactive]';
-  line += '\n';
+function isInteractive(el) {
+  const tag = el.tagName.toLowerCase();
+  const role = (el.getAttribute('role') || '').toLowerCase();
 
-  if (node.children) {
-    for (const child of node.children) {
-      line += serializeNode(child, indent + 1);
+  return ['a', 'button', 'input', 'select', 'textarea', 'details', 'summary'].includes(tag)
+    || el.getAttribute('onclick') !== null
+    || el.getAttribute('tabindex') !== null
+    || role === 'button'
+    || role === 'link'
+    || el.getAttribute('contenteditable') === 'true';
+}
+
+function isStructural(el) {
+  const tag = el.tagName.toLowerCase();
+  return ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'nav', 'main', 'header', 'footer', 'section', 'article', 'aside'].includes(tag)
+    || el.getAttribute('role') !== null;
+}
+
+function shouldInclude(el, options) {
+  const tag = el.tagName.toLowerCase();
+
+  if (['script', 'style', 'meta', 'link', 'title', 'noscript'].includes(tag)) return false;
+
+  if (options.filter !== 'all') {
+    if (el.getAttribute('aria-hidden') === 'true') return false;
+    if (!isVisible(el)) return false;
+
+    // Sample behavior: when not focused by ref, prefer in-viewport nodes for signal/noise ratio
+    if (!options.refId) {
+      const rect = el.getBoundingClientRect();
+      const inViewport = rect.top < window.innerHeight && rect.bottom > 0 && rect.left < window.innerWidth && rect.right > 0;
+      if (!inViewport) return false;
     }
   }
 
-  return line;
+  if (options.filter === 'interactive') return isInteractive(el);
+
+  if (isInteractive(el)) return true;
+  if (isStructural(el)) return true;
+  if (getAccessibleName(el).length > 0) return true;
+
+  const role = getRole(el);
+  return role !== null && role !== 'generic' && role !== 'image';
+}
+
+function escapeQuoted(text) {
+  return String(text || '')
+    .replace(/\s+/g, ' ')
+    .slice(0, 100)
+    .replace(/"/g, '\\"');
+}
+
+function walkTree(el, depth, options, lines, maxDepth, assignRef) {
+  if (!el || !el.tagName || depth > maxDepth) return;
+
+  const includeCurrent = shouldInclude(el, options) || (options.refId && depth === 0);
+
+  let nextDepth = depth;
+  if (includeCurrent) {
+    const role = getRole(el);
+    const name = getAccessibleName(el);
+    const refId = assignRef(el);
+
+    let line = `${' '.repeat(depth)}${role}`;
+    if (name) line += ` "${escapeQuoted(name)}"`;
+
+    line += ` [${refId}]`;
+
+    const href = el.getAttribute('href');
+    if (href) line += ` href="${escapeQuoted(href)}"`;
+
+    const type = el.getAttribute('type');
+    if (type) line += ` type="${escapeQuoted(type)}"`;
+
+    const placeholder = el.getAttribute('placeholder');
+    if (placeholder) line += ` placeholder="${escapeQuoted(placeholder)}"`;
+
+    lines.push(line);
+    nextDepth = depth + 1;
+
+    if (el.tagName.toLowerCase() === 'select') {
+      for (const option of el.options || []) {
+        let optionLine = `${' '.repeat(nextDepth)}option`;
+        const optionText = option.textContent?.trim();
+        if (optionText) optionLine += ` "${escapeQuoted(optionText)}"`;
+        if (option.selected) optionLine += ' (selected)';
+        if (option.value && option.value !== optionText) {
+          optionLine += ` value="${escapeQuoted(option.value)}"`;
+        }
+        lines.push(optionLine);
+      }
+    }
+  }
+
+  if (!el.children || depth >= maxDepth) return;
+  for (const child of el.children) {
+    walkTree(child, nextDepth, options, lines, maxDepth, assignRef);
+  }
+}
+
+export function handleReadPage(input, { assignRef, resolveRef, pruneRefs }) {
+  const { filter = 'all', depth = 15, ref_id, max_chars = 50000 } = input || {};
+
+  const maxDepth = Number.isFinite(depth) ? depth : 15;
+  const options = { filter, refId: ref_id || null };
+
+  let root = document.body;
+  if (ref_id) {
+    root = resolveRef(ref_id);
+    if (!root) {
+      return `Element with ref_id "${ref_id}" not found. It may have been removed from the page. Use read_page without ref_id to get the current page state.`;
+    }
+  }
+
+  const lines = [];
+  walkTree(root, 0, options, lines, maxDepth, assignRef);
+  pruneRefs();
+
+  const output = lines.join('\n');
+  if (output.length > max_chars) {
+    const prefix = `Output exceeds ${max_chars} character limit (${output.length} characters). `;
+    if (ref_id) {
+      return `${prefix}The specified element has too much content. Try a smaller depth or focus on a more specific child element.`;
+    }
+    if (input && Object.prototype.hasOwnProperty.call(input, 'depth')) {
+      return `${prefix}Try an even smaller depth or use ref_id to focus on a specific element.`;
+    }
+    return `${prefix}Try specifying a depth (for example, depth: 5) or use ref_id to focus on a specific element.`;
+  }
+
+  return output;
 }

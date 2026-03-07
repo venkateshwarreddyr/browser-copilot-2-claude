@@ -1,8 +1,8 @@
 Here is the video you shared:
 
-[Let Claude handle work in your browser](https://www.youtube.com/watch?v=rBJnWMD0Pho&utm_source=chatgpt.com)
+[Let Nexus handle work in your browser](https://www.youtube.com/watch?v=rBJnWMD0Pho&utm_source=chatgpt.com)
 
-This demo shows **Claude controlling the browser to complete real tasks** like collecting information from dashboards, responding to slide comments, and writing code — essentially acting like an **AI agent that performs workflows directly in the browser**. ([YouTube][1])
+This demo shows **Nexus controlling the browser to complete real tasks** like collecting information from dashboards, responding to slide comments, and writing code — essentially acting like an **AI agent that performs workflows directly in the browser**. ([YouTube][1])
 
 Below is a **proper Product Requirement Document (PRD)** derived from the workflows demonstrated in the video.
 
@@ -292,7 +292,7 @@ Components:
 
 **1. LLM Engine**
 
-* Claude / GPT / other model
+* Nexus / GPT / other model
 
 **2. Task Planner**
 Breaks tasks into steps.
@@ -363,7 +363,7 @@ LLM Summary
 
 ### AI
 
-* Claude API
+* Nexus API
 * OpenAI API
 * Gemini API
 
@@ -466,4 +466,4 @@ Automatically build reusable workflows.
 
 It will be **very useful since you said you are building AI agents in your job.**
 
-[1]: https://www.youtube.com/watch?v=rBJnWMD0Pho&utm_source=chatgpt.com "Let Claude handle work in your browser - YouTube"
+[1]: https://www.youtube.com/watch?v=rBJnWMD0Pho&utm_source=chatgpt.com "Let Nexus handle work in your browser - YouTube"

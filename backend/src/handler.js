@@ -20,7 +20,7 @@ export const chat = awslambda.streamifyResponse(async (event, responseStream) =>
 
   const config = getConfig();
   if (!config) {
-    writeSse(responseStream, { type: 'error', message: 'Set LLM_BASE_URL and LLM_API_KEY env vars.' });
+    writeSse(responseStream, { type: 'error', message: 'Set HF_API_KEY (or HUGGING_FACE_TOKEN / LLM_API_KEY) env var.' });
     responseStream.end();
     return;
   }

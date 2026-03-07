@@ -1,10 +1,10 @@
 import OpenAI from 'openai';
 
 export function getConfig() {
-  const baseURL = process.env.LLM_BASE_URL;
-  const apiKey = process.env.LLM_API_KEY;
+  const baseURL = process.env.LLM_BASE_URL || 'https://router.huggingface.co/v1';
+  const apiKey = process.env.HF_API_KEY || process.env.HUGGING_FACE_TOKEN || process.env.LLM_API_KEY;
   const model = process.env.LLM_MODEL || 'grok-3';
-  if (!baseURL || !apiKey) return null;
+  if (!apiKey) return null;
   return { baseURL, apiKey, model };
 }
 
@@ -125,13 +125,35 @@ function convertMessage(msg) {
     // Tool results → separate tool messages
     const toolResults = content.filter(b => b.type === 'tool_result');
     if (toolResults.length > 0) {
-      return toolResults.map(tr => ({
-        role: 'tool',
-        tool_call_id: tr.tool_use_id,
-        content: Array.isArray(tr.content)
-          ? tr.content.map(c => c.text || '').join('\n')
-          : (tr.content || ''),
-      }));
+      return toolResults.map(tr => {
+        if (Array.isArray(tr.content)) {
+          const hasImage = tr.content.some(c => c.type === 'image');
+          if (hasImage) {
+            // Build multi-part content for vision-capable models
+            const parts = tr.content.map(c => {
+              if (c.type === 'image' && c.source) {
+                return {
+                  type: 'image_url',
+                  image_url: {
+                    url: c.source.type === 'base64'
+                      ? `data:${c.source.media_type};base64,${c.source.data}`
+                      : c.source.url,
+                  },
+                };
+              }
+              return { type: 'text', text: c.text || '' };
+            });
+            return { role: 'tool', tool_call_id: tr.tool_use_id, content: parts };
+          }
+        }
+        return {
+          role: 'tool',
+          tool_call_id: tr.tool_use_id,
+          content: Array.isArray(tr.content)
+            ? tr.content.map(c => c.text || '').join('\n')
+            : (tr.content || ''),
+        };
+      });
     }
 
     // Assistant with tool_use blocks

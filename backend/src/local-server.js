@@ -36,7 +36,7 @@ const server = http.createServer(async (req, res) => {
   const config = getConfig();
   if (!config) {
     res.writeHead(500, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: 'Set LLM_BASE_URL and LLM_API_KEY env vars.' }));
+    res.end(JSON.stringify({ error: 'Set HF_API_KEY (or HUGGING_FACE_TOKEN / LLM_API_KEY) env var.' }));
     return;
   }
 
