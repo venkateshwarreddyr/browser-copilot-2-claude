@@ -402,12 +402,26 @@ export async function sendMessage(text) {
   updateStep(workingStepId, 'done');
 
   // Freeze steps into a "timeline" message so they persist in the chat
+  // Insert before the last assistant message so steps appear before content
   if (steps.length > 0) {
-    messages = [...messages, {
+    const timelineMsg = {
       id: Date.now().toString(),
       role: 'timeline',
       content: steps.map(s => ({ ...s })),
-    }];
+    };
+    // Find the last assistant message index
+    const lastAssistantIndex = messages.map(m => m.role).lastIndexOf('assistant');
+    if (lastAssistantIndex >= 0) {
+      // Insert timeline before the last assistant message
+      messages = [
+        ...messages.slice(0, lastAssistantIndex),
+        timelineMsg,
+        ...messages.slice(lastAssistantIndex),
+      ];
+    } else {
+      // No assistant message found, append at end
+      messages = [...messages, timelineMsg];
+    }
   }
 
   isRunning = false;
@@ -452,6 +466,11 @@ async function runAgentLoop(workingStepId) {
           case 'content_block_start': {
             if (event.content_block?.type === 'text') {
               currentTextBlock = { type: 'text', text: '' };
+              // Initialize streaming message immediately when text block starts
+              if (!msgAdded) {
+                messages = [...messages, { id: assistantMsgId, role: 'assistant', content: '', isStreaming: true }];
+                msgAdded = true;
+              }
             } else if (event.content_block?.type === 'tool_use') {
               currentToolBlock = {
                 type: 'tool_use',
@@ -468,10 +487,8 @@ async function runAgentLoop(workingStepId) {
             if (event.delta?.type === 'text_delta' && currentTextBlock) {
               currentTextBlock.text += event.delta.text;
               streamingText += event.delta.text;
-              if (!msgAdded) {
-                messages = [...messages, { id: assistantMsgId, role: 'assistant', content: streamingText, isStreaming: true }];
-                msgAdded = true;
-              } else {
+              // Message should already be added from content_block_start, just update content
+              if (msgAdded) {
                 messages = messages.map(m => m.id === assistantMsgId ? { ...m, content: streamingText } : m);
               }
             } else if (event.delta?.type === 'input_json_delta' && currentToolBlock) {

@@ -31,7 +31,6 @@
   let teachStatus = $state('');
   let teachWorkflows = $state([]);
   let teachWorkflowsBusy = $state(false);
-  let currentModel = $state('Sonnet 4.6');
 
   const QUICK_PROMPTS = [
     'Open the current page, read console errors, identify likely root cause, and suggest a fix.',
@@ -46,13 +45,6 @@
 
   onMount(async () => {
     refreshTeachWorkflows();
-    const settings = await getSettings();
-    if (settings.model) {
-      const m = settings.model;
-      if (m.includes('opus')) currentModel = 'Opus 4.6';
-      else if (m.includes('haiku')) currentModel = 'Haiku 4.5';
-      else currentModel = 'Sonnet 4.6';
-    }
   });
 
   $effect(() => {
@@ -277,13 +269,8 @@
   <!-- Top bar -->
   <header class="topbar">
     <div class="topbar-left">
-      <!-- Model selector pill -->
-      <span class="model-pill">
-        {currentModel}
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
-      </span>
     </div>
-    <div class="topbar-right">
+    <div class="topbar-hat">
       <!-- Teach button -->
       {#if teachRecording}
         <button class="topbar-btn danger" onclick={stopTeach} disabled={teachBusy || chatState.isRunning} title="Stop recording">
@@ -434,7 +421,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 10px 12px;
+    padding: 8px 8px;
     background: #292524;
     flex-shrink: 0;
   }
@@ -445,39 +432,26 @@
     gap: 8px;
   }
 
-  .model-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 14px;
-    font-weight: 600;
-    color: #e7e5e4;
-    cursor: pointer;
-    padding: 4px 8px;
-    border-radius: 8px;
-    transition: background 100ms ease;
-  }
-
-  .model-pill:hover {
-    background: #3f3a36;
-  }
-
-  .topbar-right {
+  .topbar-hat {
     display: flex;
     align-items: center;
     gap: 2px;
+    background: #1c1917;
+    border: 1px solid #3f3a36;
+    border-radius: 10px;
+    padding: 2px;
   }
 
   .topbar-btn {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 32px;
-    height: 32px;
+    width: 28px;
+    height: 28px;
     border: none;
     background: transparent;
     color: #a8a29e;
-    border-radius: 8px;
+    border-radius: 6px;
     cursor: pointer;
     transition: all 100ms ease;
   }
@@ -704,11 +678,11 @@
     margin: auto;
     text-align: center;
     max-width: 260px;
-    padding: 32px 16px;
+    padding: 16px 12px;
   }
 
   .empty-icon {
-    margin-bottom: 16px;
+    margin-bottom: 12px;
     opacity: 0.5;
   }
 

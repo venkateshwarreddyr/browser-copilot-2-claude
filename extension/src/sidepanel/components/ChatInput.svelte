@@ -22,16 +22,6 @@
   }
 </script>
 
-{#if quickPrompts.length > 0}
-  <section class="quick-prompts" aria-label="Quick prompts">
-    {#each quickPrompts as prompt}
-      <button class="prompt-chip" onclick={() => pickPrompt(prompt)} disabled={disabled} title={prompt}>
-        {prompt}
-      </button>
-    {/each}
-  </section>
-{/if}
-
 <div class="composer-area">
   <div class="composer" class:disabled={disabled}>
     <textarea
