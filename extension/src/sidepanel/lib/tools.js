@@ -176,6 +176,61 @@ export const TOOL_DEFINITIONS = [
     input_schema: { type: 'object', properties: {}, required: [] },
   },
   {
+    name: 'tabs_group_create',
+    description: 'Create a new Chrome tab group. Optionally move specified tabs into it. If no tabIds provided, creates the group with the current active tab.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'Name for the tab group (e.g., "Research", "Shopping")' },
+        color: { type: 'string', enum: ['grey', 'blue', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan', 'orange'], description: 'Color for the tab group (default: blue)' },
+        tabIds: { type: 'array', items: { type: 'number' }, description: 'Tab IDs to include in the new group. If omitted, uses the current active tab.' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'tabs_group_list',
+    description: 'List all tab groups in the current window with their titles, colors, and member tabs.',
+    input_schema: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    name: 'tabs_group_update',
+    description: 'Update a tab group\'s title or color.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        groupId: { type: 'number', description: 'The group ID to update. Use tabs_group_list to find group IDs.' },
+        title: { type: 'string', description: 'New title for the group.' },
+        color: { type: 'string', enum: ['grey', 'blue', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan', 'orange'], description: 'New color for the group.' },
+        collapsed: { type: 'boolean', description: 'Whether the group should be collapsed.' },
+      },
+      required: ['groupId'],
+    },
+  },
+  {
+    name: 'tabs_group_move',
+    description: 'Move one or more tabs into an existing tab group.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        tabIds: { type: 'array', items: { type: 'number' }, description: 'Tab IDs to move into the group.' },
+        groupId: { type: 'number', description: 'Target group ID to move tabs into. Use tabs_group_list to find group IDs.' },
+      },
+      required: ['tabIds', 'groupId'],
+    },
+  },
+  {
+    name: 'tabs_group_ungroup',
+    description: 'Remove one or more tabs from their current tab group (ungroup them).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        tabIds: { type: 'array', items: { type: 'number' }, description: 'Tab IDs to remove from their groups.' },
+      },
+      required: ['tabIds'],
+    },
+  },
+  {
     name: 'upload_image',
     description: 'Upload a previously captured screenshot or user-uploaded image to a file input or drag & drop target. Supports two approaches: (1) ref - for targeting specific elements, especially hidden file inputs, (2) coordinate - for drag & drop to visible locations like Google Docs. Provide either ref or coordinate, not both.',
     input_schema: {
@@ -291,3 +346,54 @@ export const TOOL_DEFINITIONS = [
     input_schema: { type: 'object', properties: {}, required: [] },
   },
 ];
+
+/**
+ * Tool categories for dynamic pruning.
+ * "core" tools are always included. Others are included based on task keywords.
+ */
+const TOOL_CATEGORIES = {
+  // Always included — essential for any browser task
+  core: ['read_page', 'find', 'computer', 'form_input', 'navigate', 'get_page_text', 'update_plan', 'tabs_context', 'tabs_create', 'turn_answer_start'],
+  // Media / file operations
+  media: ['upload_image', 'file_upload', 'gif_creator'],
+  // Debugging & dev tools
+  debug: ['read_console_messages', 'read_network_requests', 'javascript_tool'],
+  // Tab management (beyond basic create/context)
+  tab_management: ['tabs_activate', 'tabs_close', 'tabs_group_create', 'tabs_group_list', 'tabs_group_update', 'tabs_group_move', 'tabs_group_ungroup'],
+  // Page analysis
+  analysis: ['extract_links', 'get_selected_text', 'page_snapshot'],
+  // Window
+  window: ['resize_window'],
+};
+
+/** Keywords that trigger inclusion of non-core tool categories */
+const CATEGORY_KEYWORDS = {
+  media: ['upload', 'image', 'gif', 'record', 'file', 'attach', 'drag', 'drop', 'photo', 'picture', 'screenshot to'],
+  debug: ['debug', 'console', 'error', 'network', 'request', 'api', 'javascript', 'js', 'log', 'inspect', 'devtools'],
+  tab_management: ['tab', 'group', 'organize', 'multiple tabs', 'close tab', 'switch tab', 'new tab'],
+  analysis: ['links', 'extract', 'selected text', 'snapshot', 'analyze page', 'scrape'],
+  window: ['resize', 'responsive', 'mobile view', 'viewport', 'screen size'],
+};
+
+/**
+ * Returns a filtered subset of TOOL_DEFINITIONS based on user message text.
+ * Core tools are always included. Additional categories are added when
+ * the user message matches relevant keywords.
+ *
+ * @param {string} userText - The user's message text (lowercased internally)
+ * @returns {Array} Filtered tool definitions
+ */
+export function pruneTools(userText) {
+  const text = (userText || '').toLowerCase();
+  const includedNames = new Set(TOOL_CATEGORIES.core);
+
+  for (const [category, keywords] of Object.entries(CATEGORY_KEYWORDS)) {
+    if (keywords.some(kw => text.includes(kw))) {
+      for (const name of TOOL_CATEGORIES[category]) {
+        includedNames.add(name);
+      }
+    }
+  }
+
+  return TOOL_DEFINITIONS.filter(t => includedNames.has(t.name));
+}

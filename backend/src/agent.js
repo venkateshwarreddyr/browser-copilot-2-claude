@@ -8,7 +8,7 @@ export function getConfig() {
   return { baseURL, apiKey, model };
 }
 
-export async function streamChatResponse({ apiKey, baseURL, model, messages, tools, system, onEvent }) {
+export async function streamChatResponse({ apiKey, baseURL, model, messages, tools, system, max_tokens, onEvent }) {
   const client = new OpenAI({ apiKey, baseURL });
 
   const requestMessages = [];
@@ -33,7 +33,7 @@ export async function streamChatResponse({ apiKey, baseURL, model, messages, too
     model,
     messages: requestMessages,
     stream: true,
-    max_tokens: 16384,
+    max_tokens: max_tokens || 16384,
   };
 
   // Convert Anthropic tool format to OpenAI tool format

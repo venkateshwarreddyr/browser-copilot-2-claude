@@ -78,7 +78,7 @@ export const chat = awslambda.streamifyResponse(async (event, responseStream) =>
     return;
   }
 
-  const { messages, tools, system, model } = body;
+  const { messages, tools, system, model, max_tokens } = body;
 
   const config = getConfig();
   if (!config) {
@@ -95,6 +95,7 @@ export const chat = awslambda.streamifyResponse(async (event, responseStream) =>
       messages,
       tools: Array.isArray(tools) ? tools : [],
       system: Array.isArray(system) ? system : (typeof system === 'string' ? [{ type: 'text', text: system }] : []),
+      max_tokens,
       onEvent: (evt) => writeSse(responseStream, evt),
     });
   } catch (error) {

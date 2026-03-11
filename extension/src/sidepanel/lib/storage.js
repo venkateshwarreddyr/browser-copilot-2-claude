@@ -1,5 +1,33 @@
+export const ENVIRONMENTS = {
+  local: {
+    label: 'Local',
+    backendUrl: 'http://localhost:3001',
+    apiKey: '',
+  },
+  prod: {
+    label: 'Production',
+    backendUrl: 'https://cvaw4xieqxrlyldec2rndibrfy0jrhfu.lambda-url.us-east-1.on.aws',
+    apiKey: '',
+  },
+  openrouter: {
+    label: 'OpenRouter',
+    backendUrl: 'http://localhost:3001',
+    apiKey: '',
+  },
+};
+
+export const MODEL_PRESETS = [
+  { value: '', label: 'Server default' },
+  { value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
+  { value: 'claude-sonnet-4-5-20250514', label: 'Claude Sonnet 4.5' },
+  { value: 'grok-3', label: 'Grok 3' },
+  { value: 'gpt-4o', label: 'GPT-4o' },
+  { value: 'gpt-4.1', label: 'GPT-4.1' },
+];
+
 const DEFAULTS = {
-  backendUrl: 'http://localhost:3001',
+  environment: 'local',
+  backendUrl: ENVIRONMENTS.local.backendUrl,
   apiKey: '',
   model: '',
   systemPrompt: '',

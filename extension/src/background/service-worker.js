@@ -1,4 +1,69 @@
+// Use openPanelOnActionClick so Chrome opens the panel immediately on icon click
+// (preserves user gesture context — manual open() after async work loses it).
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
+
+// After the panel opens, group the tab in the background
+chrome.action.onClicked.addListener(async (tab) => {
+  if (!tab?.id) return;
+
+  trackedWindowId = tab.windowId;
+  trackedGroupId = tab.groupId ?? -1;
+
+  try {
+    await ensureTabGroup();
+  } catch {
+    // Tab grouping may fail (e.g. on chrome:// pages) — panel is already open
+  }
+});
+
+// ── Track current window & tab group context ──
+// Kept up-to-date via event listeners so every getTabsContext() call
+// already knows the scope without relying on the caller.
+let trackedWindowId = null;
+let trackedGroupId = -1;
+
+async function refreshTrackedContext() {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    if (tab) {
+      trackedWindowId = tab.windowId;
+      trackedGroupId = tab.groupId ?? -1;
+    }
+  } catch {
+    // ignore – service worker may wake before any window exists
+  }
+}
+
+// Initialise on service-worker start
+refreshTrackedContext();
+
+// Update whenever the user switches tabs
+chrome.tabs.onActivated.addListener(async ({ tabId, windowId }) => {
+  trackedWindowId = windowId;
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    trackedGroupId = tab.groupId ?? -1;
+  } catch {
+    trackedGroupId = -1;
+  }
+});
+
+// Update when a different window gains focus
+chrome.windows.onFocusChanged.addListener((windowId) => {
+  if (windowId === chrome.windows.WINDOW_ID_NONE) return;
+  trackedWindowId = windowId;
+  // Re-derive the groupId from the new window's active tab
+  chrome.tabs.query({ active: true, windowId }).then(([tab]) => {
+    trackedGroupId = tab?.groupId ?? -1;
+  }).catch(() => { trackedGroupId = -1; });
+});
+
+// Update when a tab's groupId changes (user drags tab in/out of a group)
+chrome.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
+  if (changeInfo.groupId !== undefined && tab.active && tab.windowId === trackedWindowId) {
+    trackedGroupId = tab.groupId ?? -1;
+  }
+});
 
 chrome.commands.onCommand.addListener(async (command) => {
   if (command !== 'toggle-side-panel') return;
@@ -6,7 +71,25 @@ chrome.commands.onCommand.addListener(async (command) => {
   const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!activeTab?.id) return;
 
-  await chrome.sidePanel.open({ tabId: activeTab.id });
+  trackedWindowId = activeTab.windowId;
+  trackedGroupId = activeTab.groupId ?? -1;
+
+  // Open panel first to preserve user gesture, then group
+  try {
+    await chrome.sidePanel.open({ tabId: activeTab.id });
+  } catch {
+    try {
+      await chrome.sidePanel.open({ windowId: activeTab.windowId });
+    } catch {
+      // Cannot open side panel
+    }
+  }
+
+  try {
+    await ensureTabGroup();
+  } catch {
+    // Tab grouping may fail — panel is already open
+  }
 });
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
@@ -25,6 +108,7 @@ const messageHandlers = {
   GET_TABS_CONTEXT: () => getTabsContext(),
   CAPTURE_SCREENSHOT: (msg) => captureScreenshot(msg.tabId),
   CREATE_TAB: () => handleTabsCreate(),
+  ENSURE_TAB_GROUP: () => ensureTabGroup(),
   START_TEACH: (msg) => handleTeachStart(msg.tabId),
   STOP_TEACH: (msg) => handleTeachStop(msg.tabId),
   GET_TEACH_STATUS: (msg) => handleTeachStatus(msg.tabId),
@@ -143,6 +227,21 @@ async function executeTool(toolName, input) {
       case 'tabs_close':
         return await handleTabsClose(input);
 
+      case 'tabs_group_create':
+        return await handleTabsGroupCreate(input);
+
+      case 'tabs_group_list':
+        return await handleTabsGroupList();
+
+      case 'tabs_group_update':
+        return await handleTabsGroupUpdate(input);
+
+      case 'tabs_group_move':
+        return await handleTabsGroupMove(input);
+
+      case 'tabs_group_ungroup':
+        return await handleTabsGroupUngroup(input);
+
       case 'resize_window':
         return await handleResizeWindow(input);
 
@@ -240,24 +339,88 @@ async function captureScreenshot(tabId) {
   }
 }
 
+// Auto-create a tab group for the current tab when the side panel opens.
+// If the active tab is already in a group, just track that group.
+// Returns the group info so the side panel knows the scope.
+async function ensureTabGroup() {
+  await refreshTrackedContext();
+
+  // Already in a group — nothing to do
+  if (trackedGroupId != null && trackedGroupId !== -1) {
+    try {
+      const group = await chrome.tabGroups.get(trackedGroupId);
+      return { groupId: trackedGroupId, title: group.title || '', color: group.color, created: false };
+    } catch {
+      // Group was deleted, fall through to create a new one
+    }
+  }
+
+  // Get the active tab
+  const [activeTab] = await chrome.tabs.query({ active: true, windowId: trackedWindowId || undefined });
+  if (!activeTab) return { error: 'No active tab found.' };
+
+  // Create a new group with just this tab
+  const groupId = await chrome.tabs.group({
+    tabIds: [activeTab.id],
+    createProperties: trackedWindowId ? { windowId: trackedWindowId } : {},
+  });
+
+  await chrome.tabGroups.update(groupId, { title: 'Nexus', color: 'blue' });
+
+  // Update tracked context
+  trackedGroupId = groupId;
+
+  return { groupId, title: 'Nexus', color: 'blue', created: true };
+}
+
 async function getTabsContext() {
-  const tabs = await chrome.tabs.query({});
-  return tabs
-    .filter((t) => t.url && !t.url.startsWith('chrome://') && !t.url.startsWith('chrome-extension://'))
-    .map((t) => ({
-      tabId: t.id,
-      title: t.title || '',
-      url: t.url,
-      active: t.active,
-      windowId: t.windowId,
-      pinned: Boolean(t.pinned),
-      audible: Boolean(t.audible),
-      discarded: Boolean(t.discarded),
-    }));
+  const windowId = trackedWindowId;
+  const groupId = trackedGroupId;
+
+  // Scope to the current window (fall back to all tabs if window unknown)
+  const tabs = await chrome.tabs.query(windowId ? { windowId } : {});
+
+  let filteredTabs = tabs.filter(
+    (t) => t.url && !t.url.startsWith('chrome://') && !t.url.startsWith('chrome-extension://')
+  );
+
+  // ALWAYS scope to the tracked group — extension only accesses grouped tabs
+  if (groupId != null && groupId !== -1) {
+    filteredTabs = filteredTabs.filter((t) => t.groupId === groupId);
+  } else {
+    // No group tracked — should not happen after ensureTabGroup, but
+    // return empty to enforce group-only access
+    filteredTabs = [];
+  }
+
+  return filteredTabs.map((t) => ({
+    tabId: t.id,
+    title: t.title || '',
+    url: t.url,
+    active: t.active,
+    windowId: t.windowId,
+    groupId: t.groupId ?? -1,
+    pinned: Boolean(t.pinned),
+    audible: Boolean(t.audible),
+    discarded: Boolean(t.discarded),
+  }));
 }
 
 async function handleTabsCreate() {
-  const tab = await chrome.tabs.create({ active: false });
+  const createOpts = { active: false };
+  if (trackedWindowId) createOpts.windowId = trackedWindowId;
+
+  const tab = await chrome.tabs.create(createOpts);
+
+  // If the active tab is in a Chrome tab group, add the new tab to the same group
+  if (trackedGroupId != null && trackedGroupId !== -1) {
+    try {
+      await chrome.tabs.group({ tabIds: [tab.id], groupId: trackedGroupId });
+    } catch {
+      // Group may have been closed between check and create
+    }
+  }
+
   return { tabId: tab.id, title: tab.title || 'New Tab', url: tab.url };
 }
 
@@ -275,6 +438,106 @@ async function handleTabsClose(input) {
   if (!tabId) return 'Error: tabId is required';
   await chrome.tabs.remove(tabId);
   return `Closed tab ${tabId}`;
+}
+
+async function handleTabsGroupCreate(input) {
+  const { title, color, tabIds } = input || {};
+
+  let ids = tabIds;
+  if (!ids || ids.length === 0) {
+    const [activeTab] = await chrome.tabs.query({ active: true, windowId: trackedWindowId || undefined });
+    if (!activeTab) return 'Error: No active tab found to create a group.';
+    ids = [activeTab.id];
+  }
+
+  const groupId = await chrome.tabs.group({
+    tabIds: ids,
+    createProperties: trackedWindowId ? { windowId: trackedWindowId } : {},
+  });
+
+  const updateProps = {};
+  if (title) updateProps.title = title;
+  updateProps.color = color || 'blue';
+
+  await chrome.tabGroups.update(groupId, updateProps);
+
+  // Update tracked context to the new group
+  trackedGroupId = groupId;
+
+  return { groupId, title: title || '', color: updateProps.color, tabIds: ids };
+}
+
+async function handleTabsGroupList() {
+  const queryOpts = trackedWindowId ? { windowId: trackedWindowId } : {};
+  const allTabs = await chrome.tabs.query(queryOpts);
+
+  // Collect unique group IDs (excluding ungrouped tabs)
+  const groupIds = [...new Set(allTabs.filter((t) => t.groupId !== -1).map((t) => t.groupId))];
+
+  const groups = [];
+  for (const gid of groupIds) {
+    try {
+      const group = await chrome.tabGroups.get(gid);
+      const memberTabs = allTabs
+        .filter((t) => t.groupId === gid)
+        .map((t) => ({ tabId: t.id, title: t.title || '', url: t.url, active: t.active }));
+
+      groups.push({
+        groupId: group.id,
+        title: group.title || '',
+        color: group.color,
+        collapsed: group.collapsed,
+        tabCount: memberTabs.length,
+        tabs: memberTabs,
+      });
+    } catch {
+      // Group may have been removed
+    }
+  }
+
+  // Also count ungrouped tabs
+  const ungroupedTabs = allTabs
+    .filter((t) => t.groupId === -1 && t.url && !t.url.startsWith('chrome://') && !t.url.startsWith('chrome-extension://'))
+    .map((t) => ({ tabId: t.id, title: t.title || '', url: t.url, active: t.active }));
+
+  return {
+    groups,
+    ungroupedTabs: { tabCount: ungroupedTabs.length, tabs: ungroupedTabs },
+    currentGroupId: trackedGroupId,
+  };
+}
+
+async function handleTabsGroupUpdate(input) {
+  const { groupId, title, color, collapsed } = input || {};
+  if (!groupId && groupId !== 0) return 'Error: groupId is required';
+
+  const updateProps = {};
+  if (title !== undefined) updateProps.title = title;
+  if (color !== undefined) updateProps.color = color;
+  if (collapsed !== undefined) updateProps.collapsed = collapsed;
+
+  if (Object.keys(updateProps).length === 0) return 'Error: Provide at least one of title, color, or collapsed to update.';
+
+  await chrome.tabGroups.update(groupId, updateProps);
+  const updated = await chrome.tabGroups.get(groupId);
+  return { groupId: updated.id, title: updated.title, color: updated.color, collapsed: updated.collapsed };
+}
+
+async function handleTabsGroupMove(input) {
+  const { tabIds, groupId } = input || {};
+  if (!tabIds || tabIds.length === 0) return 'Error: tabIds array is required';
+  if (!groupId && groupId !== 0) return 'Error: groupId is required';
+
+  await chrome.tabs.group({ tabIds, groupId });
+  return `Moved ${tabIds.length} tab(s) to group ${groupId}`;
+}
+
+async function handleTabsGroupUngroup(input) {
+  const { tabIds } = input || {};
+  if (!tabIds || tabIds.length === 0) return 'Error: tabIds array is required';
+
+  await chrome.tabs.ungroup(tabIds);
+  return `Ungrouped ${tabIds.length} tab(s)`;
 }
 
 async function handleResizeWindow(input) {

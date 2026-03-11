@@ -177,7 +177,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  const { messages, tools, system, model } = body;
+  const { messages, tools, system, model, max_tokens } = body;
 
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
@@ -193,6 +193,7 @@ const server = http.createServer(async (req, res) => {
       messages,
       tools: Array.isArray(tools) ? tools : [],
       system: Array.isArray(system) ? system : (typeof system === 'string' ? [{ type: 'text', text: system }] : []),
+      max_tokens,
       onEvent: (evt) => {
         res.write(`data: ${JSON.stringify(evt)}\n\n`);
       },

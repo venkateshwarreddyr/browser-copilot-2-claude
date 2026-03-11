@@ -1,5 +1,5 @@
 <script>
-  import { getSettings, saveSettings, ENVIRONMENTS } from '../lib/storage.js';
+  import { getSettings, saveSettings, ENVIRONMENTS, MODEL_PRESETS } from '../lib/storage.js';
 
   let { onClose } = $props();
   let environment = $state('local');
@@ -59,7 +59,7 @@
           class:active={environment === key}
           onclick={() => switchEnv(key)}
         >
-          <span class="env-dot" class:local={key === 'local'} class:prod={key === 'prod'}></span>
+          <span class="env-dot" class:local={key === 'local'} class:prod={key === 'prod'} class:openrouter={key === 'openrouter'}></span>
           {env.label}
         </button>
       {/each}
@@ -78,7 +78,15 @@
 
   <label>
     Model
-    <input type="text" bind:value={model} placeholder="(uses server default)" />
+    <select bind:value={model} class="model-select">
+      {#each MODEL_PRESETS as preset}
+        <option value={preset.value}>{preset.label}</option>
+      {/each}
+      {#if model && !MODEL_PRESETS.some(p => p.value === model)}
+        <option value={model}>{model}</option>
+      {/if}
+    </select>
+    <input type="text" bind:value={model} placeholder="Or type a custom model ID" />
   </label>
 
   <label>
@@ -204,6 +212,31 @@
 
   .env-dot.prod {
     background: #f97316;
+  }
+
+  .env-dot.openrouter {
+    background: #a78bfa;
+  }
+
+  .model-select {
+    display: block;
+    width: 100%;
+    margin-top: 5px;
+    margin-bottom: 5px;
+    padding: 8px 10px;
+    border: 1px solid #3f3a36;
+    border-radius: 9px;
+    font-size: 13px;
+    outline: none;
+    font-family: inherit;
+    color: #e7e5e4;
+    background: #1c1917;
+    cursor: pointer;
+  }
+
+  .model-select:focus {
+    border-color: #d4845a;
+    box-shadow: 0 0 0 2px rgba(212, 132, 90, 0.2);
   }
 
   input[type='text'],
